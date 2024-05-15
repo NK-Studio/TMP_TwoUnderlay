@@ -5,9 +5,9 @@ namespace TMPro.EditorUtilities
 {
     public class TMP_Expansion_SDFShaderGUI : TMP_BaseShaderGUI
     {
-        static ShaderFeature s_OutlineFeature, s_UnderlayFeature, s_BevelFeature, s_GlowFeature, s_MaskFeature;
+        static ShaderFeature s_OutlineFeature, s_Underlay1Feature, s_Underlay2Feature, s_BevelFeature, s_GlowFeature, s_MaskFeature;
 
-        static bool s_Face = true, s_Outline = true, s_Outline2, s_Underlay, s_Lighting, s_Glow, s_Bevel, s_Light, s_Bump, s_Env;
+        static bool s_Face = true, s_Outline = true, s_Outline2, s_Underlay1, s_Underlay2, s_Lighting, s_Glow, s_Bevel, s_Light, s_Bump, s_Env;
 
         static string[]
             s_FaceUVSpeedName = { "_FaceUVSpeed" },
@@ -22,9 +22,9 @@ namespace TMPro.EditorUtilities
                 keywords = new[] { "OUTLINE_ON" }
             };
 
-            s_UnderlayFeature = new ShaderFeature()
+            s_Underlay1Feature = new ShaderFeature()
             {
-                undoLabel = "Underlay",
+                undoLabel = "Underlay01",
                 keywords = new[] { "UNDERLAY_ON", "UNDERLAY_INNER" },
                 label = new GUIContent("Underlay Type"),
                 keywordLabels = new[]
@@ -33,6 +33,17 @@ namespace TMPro.EditorUtilities
                 }
             };
 
+            s_Underlay2Feature = new ShaderFeature()
+            {
+                undoLabel = "Underlay02",
+                keywords = new[] { "UNDERLAY2_ON", "UNDERLAY2_INNER" },
+                label = new GUIContent("Underlay Type"),
+                keywordLabels = new[]
+                {
+                    new GUIContent("None"), new GUIContent("Normal"), new GUIContent("Inner")
+                }
+            };
+            
             s_BevelFeature = new ShaderFeature()
             {
                 undoLabel = "Bevel",
@@ -88,10 +99,21 @@ namespace TMPro.EditorUtilities
 
             if (m_Material.HasProperty(ShaderUtilities.ID_UnderlayColor))
             {
-                s_Underlay = BeginPanel("Underlay", s_UnderlayFeature, s_Underlay);
-                if (s_Underlay)
+                s_Underlay1 = BeginPanel("Underlay 01", s_Underlay1Feature, s_Underlay1);
+                if (s_Underlay1)
                 {
-                    DoUnderlayPanel();
+                    DoUnderlayPanel(1);
+                }
+
+                EndPanel();
+            }
+            
+            if (m_Material.HasProperty(ShaderUtilities.ID_Underlay2Color))
+            {
+                s_Underlay2 = BeginPanel("Underlay 02", s_Underlay2Feature, s_Underlay2);
+                if (s_Underlay2)
+                {
+                    DoUnderlayPanel(2);
                 }
 
                 EndPanel();
@@ -289,15 +311,26 @@ namespace TMPro.EditorUtilities
             EditorGUILayout.Space();
         }
 
-        void DoUnderlayPanel()
+        void DoUnderlayPanel(int layer)
         {
             EditorGUI.indentLevel += 1;
-            s_UnderlayFeature.DoPopup(m_Editor, m_Material);
-            DoColor("_UnderlayColor", "Color");
-            DoSlider("_UnderlayOffsetX", "Offset X");
-            DoSlider("_UnderlayOffsetY", "Offset Y");
-            DoSlider("_UnderlayDilate", "Dilate");
-            DoSlider("_UnderlaySoftness", "Softness");
+
+            string prefix = string.Empty;
+
+            if (layer == 1)
+                s_Underlay1Feature.DoPopup(m_Editor, m_Material);
+            else if (layer == 2)
+            {
+                s_Underlay2Feature.DoPopup(m_Editor, m_Material);
+                prefix = "2";
+            }
+
+            DoColor($"_Underlay{prefix}Color", "Color");
+            DoSlider($"_Underlay{prefix}OffsetX", "Offset X");
+            DoSlider($"_Underlay{prefix}OffsetY", "Offset Y");
+            DoSlider($"_Underlay{prefix}Dilate", "Dilate");
+            DoSlider($"_Underlay{prefix}Softness", "Softness");
+
             EditorGUI.indentLevel -= 1;
             EditorGUILayout.Space();
         }
@@ -455,6 +488,7 @@ namespace TMPro.EditorUtilities
             DoFloat("_ScaleRatioA", "Scale Ratio A");
             DoFloat("_ScaleRatioB", "Scale Ratio B");
             DoFloat("_ScaleRatioC", "Scale Ratio C");
+            DoFloat("_ScaleRatioD", "Scale Ratio D");
             EditorGUI.EndDisabledGroup();
             EditorGUI.indentLevel -= 1;
             EditorGUILayout.Space();

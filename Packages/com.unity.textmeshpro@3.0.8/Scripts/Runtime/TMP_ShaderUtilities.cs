@@ -20,6 +20,12 @@ namespace TMPro
         public static int ID_UnderlayOffsetY;
         public static int ID_UnderlayDilate;
         public static int ID_UnderlaySoftness;
+        
+        public static int ID_Underlay2Color;
+        public static int ID_Underlay2OffsetX;
+        public static int ID_Underlay2OffsetY;
+        public static int ID_Underlay2Dilate;
+        public static int ID_Underlay2Softness;
 
         /// <summary>
         /// Property ID for the _UnderlayOffset shader property used by URP and HDRP shaders
@@ -85,10 +91,12 @@ namespace TMPro
         public static int ID_ScaleRatio_A;
         public static int ID_ScaleRatio_B;
         public static int ID_ScaleRatio_C;
+        public static int ID_ScaleRatio_D;
 
         public static string Keyword_Bevel = "BEVEL_ON";
         public static string Keyword_Glow = "GLOW_ON";
         public static string Keyword_Underlay = "UNDERLAY_ON";
+        public static string Keyword_Underlay2 = "UNDERLAY2_ON";
         public static string Keyword_Ratios = "RATIOS_OFF";
         //public static string Keyword_MASK_OFF = "MASK_OFF";
         public static string Keyword_MASK_SOFT = "MASK_SOFT";
@@ -164,6 +172,12 @@ namespace TMPro
                 ID_UnderlayOffsetY = Shader.PropertyToID("_UnderlayOffsetY");
                 ID_UnderlayDilate = Shader.PropertyToID("_UnderlayDilate");
                 ID_UnderlaySoftness = Shader.PropertyToID("_UnderlaySoftness");
+                
+                ID_Underlay2Color = Shader.PropertyToID("_Underlay2Color");
+                ID_Underlay2OffsetX = Shader.PropertyToID("_Underlay2OffsetX");
+                ID_Underlay2OffsetY = Shader.PropertyToID("_Underlay2OffsetY");
+                ID_Underlay2Dilate = Shader.PropertyToID("_Underlay2Dilate");
+                ID_Underlay2Softness = Shader.PropertyToID("_Underlay2Softness");
 
                 ID_UnderlayOffset = Shader.PropertyToID("_UnderlayOffset");
                 ID_UnderlayIsoPerimeter = Shader.PropertyToID("_UnderlayIsoPerimeter");
@@ -223,6 +237,7 @@ namespace TMPro
                 ID_ScaleRatio_A = Shader.PropertyToID("_ScaleRatioA");
                 ID_ScaleRatio_B = Shader.PropertyToID("_ScaleRatioB");
                 ID_ScaleRatio_C = Shader.PropertyToID("_ScaleRatioC");
+                ID_ScaleRatio_D = Shader.PropertyToID("_ScaleRatioD");
 
                 // Set internal shader references
                 if (k_ShaderRef_MobileSDF == null)
@@ -243,6 +258,7 @@ namespace TMPro
             float ratio_A = 1;
             float ratio_B = 1;
             float ratio_C = 1;
+            float ratio_D = 1;
 
             bool isRatioEnabled = !mat.shaderKeywords.Contains(Keyword_Ratios);
 
@@ -303,6 +319,26 @@ namespace TMPro
                 // Only set the ratio if it has changed.
                 //if (ratio_C != ratio_C_old)
                     mat.SetFloat(ID_ScaleRatio_C, ratio_C);
+            }
+            
+            // Compute Ratio D
+            if (mat.HasProperty(ID_Underlay2OffsetX))
+            {
+                float underlayOffsetX = mat.GetFloat(ID_Underlay2OffsetX);
+                float underlayOffsetY = mat.GetFloat(ID_Underlay2OffsetY);
+                float underlayDilate = mat.GetFloat(ID_Underlay2Dilate);
+                float underlaySoftness = mat.GetFloat(ID_Underlay2Softness);
+
+                float range = (weight + faceDilate) * (scale - m_clamp);
+
+                t = Mathf.Max(1, Mathf.Max(Mathf.Abs(underlayOffsetX), Mathf.Abs(underlayOffsetY)) + underlayDilate + underlaySoftness);
+
+                ratio_D = isRatioEnabled ? Mathf.Max(0, scale - m_clamp - range) / (scale * t) : 1;
+                //float ratio_C_old = mat.GetFloat(ID_ScaleRatio_C);
+
+                // Only set the ratio if it has changed.
+                //if (ratio_C != ratio_C_old)
+                mat.SetFloat(ID_ScaleRatio_D, ratio_D);
             }
         }
 
@@ -375,6 +411,7 @@ namespace TMPro
             float scaleRatio_A = 0;
             float scaleRatio_B = 0;
             float scaleRatio_C = 0;
+            float scaleRatio_D = 0;
 
             float glowOffset = 0;
             float glowOuter = 0;
@@ -425,6 +462,23 @@ namespace TMPro
                 float offsetY = material.GetFloat(ID_UnderlayOffsetY) * scaleRatio_C;
                 float dilate = material.GetFloat(ID_UnderlayDilate) * scaleRatio_C;
                 float softness = material.GetFloat(ID_UnderlaySoftness) * scaleRatio_C;
+
+                padding.x = Mathf.Max(padding.x, faceDilate + dilate + softness - offsetX);
+                padding.y = Mathf.Max(padding.y, faceDilate + dilate + softness - offsetY);
+                padding.z = Mathf.Max(padding.z, faceDilate + dilate + softness + offsetX);
+                padding.w = Mathf.Max(padding.w, faceDilate + dilate + softness + offsetY);
+            }
+            
+            // Underlay02 padding contribution
+            if (material.HasProperty(ID_Underlay2Softness) && shaderKeywords.Contains(Keyword_Underlay2)) // Generates GC
+            {
+                if (material.HasProperty(ID_ScaleRatio_D))
+                    scaleRatio_D = material.GetFloat(ID_ScaleRatio_D);
+
+                float offsetX = material.GetFloat(ID_Underlay2OffsetX) * scaleRatio_D;
+                float offsetY = material.GetFloat(ID_Underlay2OffsetY) * scaleRatio_D;
+                float dilate = material.GetFloat(ID_Underlay2Dilate) * scaleRatio_D;
+                float softness = material.GetFloat(ID_Underlay2Softness) * scaleRatio_D;
 
                 padding.x = Mathf.Max(padding.x, faceDilate + dilate + softness - offsetX);
                 padding.y = Mathf.Max(padding.y, faceDilate + dilate + softness - offsetY);
