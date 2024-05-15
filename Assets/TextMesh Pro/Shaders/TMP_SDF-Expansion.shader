@@ -42,6 +42,12 @@ Properties {
 	_UnderlayOffsetY	("Border OffsetY", Range(-1,1)) = 0
 	_UnderlayDilate		("Border Dilate", Range(-1,1)) = 0
 	_UnderlaySoftness	("Border Softness", Range(0,1)) = 0
+	
+	[HDR]_Underlay2Color("Border Color", Color) = (0,0,0, 0.5)
+	_Underlay2OffsetX	("Border OffsetX", Range(-1,1)) = 0
+	_Underlay2OffsetY	("Border OffsetY", Range(-1,1)) = 0
+	_Underlay2Dilate	("Border Dilate", Range(-1,1)) = 0
+	_Underlay2Softness	("Border Softness", Range(0,1)) = 0
 
 	[HDR]_GlowColor			("Color", Color) = (0, 1, 0, 0.5)
 	_GlowOffset			("Offset", Range(-1,1)) = 0
@@ -56,6 +62,7 @@ Properties {
 	_ScaleRatioA		("Scale RatioA", float) = 1
 	_ScaleRatioB		("Scale RatioB", float) = 1
 	_ScaleRatioC		("Scale RatioC", float) = 1
+	_ScaleRatioD		("Scale RatioC", float) = 1
 
 	_MainTex			("Font Atlas", 2D) = "white" {}
 	_TextureWidth		("Texture Width", float) = 512
@@ -117,6 +124,7 @@ SubShader {
 		#pragma fragment PixShader
 		#pragma shader_feature __ BEVEL_ON
 		#pragma shader_feature __ UNDERLAY_ON UNDERLAY_INNER
+		#pragma shader_feature __ UNDERLAY2_ON UNDERLAY2_INNER
 		#pragma shader_feature __ GLOW_ON
 
 		#pragma multi_compile __ UNITY_UI_CLIP_RECT
@@ -151,7 +159,12 @@ SubShader {
 			float4	texcoord2		: TEXCOORD4;		// u,v, scale, bias
 			fixed4	underlayColor	: COLOR1;
 		#endif
-			float4 textures			: TEXCOORD5;
+
+		#if (UNDERLAY2_ON || UNDERLAY2_INNER)
+			float4	texcoord3		: TEXCOORD5;		// u,v, scale, bias
+			fixed4	underlay2Color	: COLOR2;
+		#endif
+			float4 textures			: TEXCOORD6;
 		};
 
 		// Used by Unity internally to handle Texture Tiling and Offset.
@@ -207,6 +220,19 @@ SubShader {
 			float2 bOffset = float2(x, y);
 		#endif
 
+		#if (UNDERLAY2_ON || UNDERLAY2_INNER)
+			float4 underlay2Color = _Underlay2Color;
+			underlay2Color.rgb *= underlay2Color.a;
+
+			float bScale2 = scale;
+			bScale2 /= 1 + ((_Underlay2Softness*_ScaleRatioD) * bScale2);
+			float bBias2 = (0.5 - weight) * bScale2 - 0.5 - ((_Underlay2Dilate * _ScaleRatioD) * 0.5 * bScale2);
+
+			float x2 = -(_Underlay2OffsetX * _ScaleRatioD) * _GradientScale / _TextureWidth;
+			float y2 = -(_Underlay2OffsetY * _ScaleRatioD) * _GradientScale / _TextureHeight;
+			float2 bOffset2 = float2(x2, y2);
+		#endif
+
 			// Generate UV for the Masking Texture
 			float4 clampedRect = clamp(_ClipRect, -2e10, 2e10);
 			float2 maskUV = (vert.xy - clampedRect.xy) / (clampedRect.zw - clampedRect.xy);
@@ -227,6 +253,10 @@ SubShader {
 			output.texcoord2 = float4(input.texcoord0 + bOffset, bScale, bBias);
 			output.underlayColor =	underlayColor;
 			#endif
+			#if (UNDERLAY2_ON || UNDERLAY2_INNER)
+			output.texcoord3 = float4(input.texcoord0 + bOffset2, bScale2, bBias2);
+			output.underlay2Color =	underlay2Color;
+			#endif
 			output.textures = float4(faceUV, outlineUV);
 
 			return output;
@@ -239,9 +269,9 @@ SubShader {
 
 			float c = tex2D(_MainTex, input.atlas).a;
 
-		#ifndef UNDERLAY_ON
-			clip(c - input.param.x);
-		#endif
+			#if !defined(UNDERLAY_ON) && !defined(UNDERLAY2_ON)
+				clip(c - input.param.x);
+			#endif
 
 			float	scale	= input.param.y;
 			float	bias	= input.param.z;
@@ -290,6 +320,16 @@ SubShader {
 			faceColor += input.underlayColor * (1 - saturate(d - input.texcoord2.w)) * saturate(1 - sd) * (1 - faceColor.a);
 		#endif
 
+		#if UNDERLAY2_ON
+			float d2 = tex2D(_MainTex, input.texcoord3.xy).a * input.texcoord3.z;
+			faceColor += input.underlay2Color * saturate(d2 - input.texcoord3.w) * (1 - faceColor.a);
+		#endif
+
+		#if UNDERLAY2_INNER
+			float d2 = tex2D(_MainTex, input.texcoord3.xy).a * input.texcoord3.z;
+			faceColor += input.underlay2Color * (1 - saturate(d2 - input.texcoord3.w)) * saturate(1 - sd) * (1 - faceColor.a);
+		#endif
+
 		#if GLOW_ON
 			float4 glowColor = GetGlowColor(sd, scale);
 			faceColor.rgb += glowColor.rgb * glowColor.a;
@@ -313,5 +353,5 @@ SubShader {
 }
 
 Fallback "TextMeshPro/Mobile/Distance Field"
-CustomEditor "TMPro.EditorUtilities.TMP_SDFShaderGUI"
+CustomEditor "TMPro.EditorUtilities.TMP_Expansion_SDFShaderGUI"
 }
