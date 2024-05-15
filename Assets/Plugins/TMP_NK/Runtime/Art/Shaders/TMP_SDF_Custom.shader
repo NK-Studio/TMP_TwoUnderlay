@@ -3,7 +3,7 @@
 // - No Glow Option
 // - Softness is applied on both side of the outline
 
-Shader "TextMeshPro/Mobile/Distance Field" {
+Shader "TextMeshPro/Distance Field (Custom)" {
 
 Properties {
 	[HDR]_FaceColor     ("Face Color", Color) = (1,1,1,1)
@@ -18,6 +18,12 @@ Properties {
 	_UnderlayOffsetY 	("Border OffsetY", Range(-1,1)) = 0
 	_UnderlayDilate		("Border Dilate", Range(-1,1)) = 0
 	_UnderlaySoftness 	("Border Softness", Range(0,1)) = 0
+	
+	[HDR]_Underlay2Color("Border Color", Color) = (0,0,0,.5)
+	_Underlay2OffsetX 	("Border OffsetX", Range(-1,1)) = 0
+	_Underlay2OffsetY 	("Border OffsetY", Range(-1,1)) = 0
+	_Underlay2Dilate	("Border Dilate", Range(-1,1)) = 0
+	_Underlay2Softness 	("Border Softness", Range(0,1)) = 0
 
 	_WeightNormal		("Weight Normal", float) = 0
 	_WeightBold			("Weight Bold", float) = .5
@@ -26,6 +32,7 @@ Properties {
 	_ScaleRatioA		("Scale RatioA", float) = 1
 	_ScaleRatioB		("Scale RatioB", float) = 1
 	_ScaleRatioC		("Scale RatioC", float) = 1
+	_ScaleRatioD		("Scale RatioD", float) = 1
 
 	_MainTex			("Font Atlas", 2D) = "white" {}
 	_TextureWidth		("Texture Width", float) = 512
@@ -85,6 +92,7 @@ SubShader {
 		#pragma fragment PixShader
 		#pragma shader_feature __ OUTLINE_ON
 		#pragma shader_feature __ UNDERLAY_ON UNDERLAY_INNER
+		#pragma shader_feature __ UNDERLAY2_ON UNDERLAY2_INNER
 
 		#pragma multi_compile __ UNITY_UI_CLIP_RECT
 		#pragma multi_compile __ UNITY_UI_ALPHACLIP
@@ -115,6 +123,10 @@ SubShader {
 			float4	texcoord1		: TEXCOORD3;			// Texture UV, alpha, reserved
 			half2	underlayParam	: TEXCOORD4;			// Scale(x), Bias(y)
 			#endif
+			#if (UNDERLAY2_ON | UNDERLAY2_INNER)
+			float4	texcoord2		: TEXCOORD5;			// Texture UV, alpha, reserved
+			half2	underlay2Param	: TEXCOORD6;			// Scale(x), Bias(y)
+			#endif
 		};
 
 
@@ -144,14 +156,15 @@ SubShader {
 			float weight = lerp(_WeightNormal, _WeightBold, bold) / 4.0;
 			weight = (weight + _FaceDilate) * _ScaleRatioA * 0.5;
 
-			float layerScale = scale;
+			float layerScale01 = scale;
+			float layerScale02 = scale;
 
 			scale /= 1 + (_OutlineSoftness * _ScaleRatioA * scale);
 			float bias = (0.5 - weight) * scale - 0.5;
 			float outline = _OutlineWidth * _ScaleRatioA * 0.5 * scale;
 
 			float opacity = input.color.a;
-			#if (UNDERLAY_ON | UNDERLAY_INNER)
+			#if (UNDERLAY_ON | UNDERLAY_INNER )
 			opacity = 1.0;
 			#endif
 
@@ -164,12 +177,21 @@ SubShader {
 			outlineColor = lerp(faceColor, outlineColor, sqrt(min(1.0, (outline * 2))));
 
 			#if (UNDERLAY_ON | UNDERLAY_INNER)
-			layerScale /= 1 + ((_UnderlaySoftness * _ScaleRatioC) * layerScale);
-			float layerBias = (.5 - weight) * layerScale - .5 - ((_UnderlayDilate * _ScaleRatioC) * .5 * layerScale);
+			layerScale01 /= 1 + ((_UnderlaySoftness * _ScaleRatioC) * layerScale01);
+			float layerBias = (.5 - weight) * layerScale01 - .5 - ((_UnderlayDilate * _ScaleRatioC) * .5 * layerScale01);
 
 			float x = -(_UnderlayOffsetX * _ScaleRatioC) * _GradientScale / _TextureWidth;
 			float y = -(_UnderlayOffsetY * _ScaleRatioC) * _GradientScale / _TextureHeight;
 			float2 layerOffset = float2(x, y);
+			#endif
+
+			#if (UNDERLAY2_ON | UNDERLAY2_INNER)
+			layerScale02 /= 1 + ((_Underlay2Softness * _ScaleRatioD) * layerScale02);
+			float layerBias2 = (.5 - weight) * layerScale02 - .5 - ((_Underlay2Dilate * _ScaleRatioD) * .5 * layerScale02);
+
+			float x2 = -(_Underlay2OffsetX * _ScaleRatioD) * _GradientScale / _TextureWidth;
+			float y2 = -(_Underlay2OffsetY * _ScaleRatioD) * _GradientScale / _TextureHeight;
+			float2 layer2Offset = float2(x2, y2);
 			#endif
 
 			// Generate UV for the Masking Texture
@@ -185,7 +207,12 @@ SubShader {
 			output.mask = half4(vert.xy * 2 - clampedRect.xy - clampedRect.zw, 0.25 / (0.25 * half2(_MaskSoftnessX, _MaskSoftnessY) + pixelSize.xy));
 			#if (UNDERLAY_ON || UNDERLAY_INNER)
 			output.texcoord1 = float4(input.texcoord0 + layerOffset, input.color.a, 0);
-			output.underlayParam = half2(layerScale, layerBias);
+			output.underlayParam = half2(layerScale01, layerBias);
+			#endif
+
+			#if (UNDERLAY2_ON || UNDERLAY2_INNER)
+			output.texcoord2 = float4(input.texcoord0 + layer2Offset, input.color.a, 0);
+			output.underlay2Param = half2(layerScale02, layerBias2);
 			#endif
 
 			return output;
@@ -198,6 +225,7 @@ SubShader {
 			UNITY_SETUP_INSTANCE_ID(input);
 
 			half d = tex2D(_MainTex, input.texcoord0.xy).a * input.param.x;
+			half d2 = tex2D(_MainTex, input.texcoord0.xy).a * input.param.x;
 			half4 c = input.faceColor * saturate(d - input.param.w);
 
 			#ifdef OUTLINE_ON
@@ -216,6 +244,17 @@ SubShader {
 			c += float4(_UnderlayColor.rgb * _UnderlayColor.a, _UnderlayColor.a) * (1 - saturate(d - input.underlayParam.y)) * sd * (1 - c.a);
 			#endif
 
+			#if UNDERLAY2_ON
+			d2 = tex2D(_MainTex, input.texcoord2.xy).a * input.underlay2Param.x;
+			c += float4(_Underlay2Color.rgb * _Underlay2Color.a, _Underlay2Color.a) * saturate(d2 - input.underlay2Param.y) * (1 - c.a);
+			#endif
+
+			#if UNDERLAY2_INNER
+			half sd2 = saturate(d - input.param.z);
+			d2 = tex2D(_MainTex, input.texcoord2.xy).a * input.underlay2Param.x;
+			c += float4(_Underlay2Color.rgb * _Underlay2Color.a, _Underlay2Color.a) * (1 - saturate(d - input.underlay2Param.y)) * sd2 * (1 - c.a);
+			#endif
+
 			// Alternative implementation to UnityGet2DClipping with support for softness.
 			#if UNITY_UI_CLIP_RECT
 			half2 m = saturate((_ClipRect.zw - _ClipRect.xy - abs(input.mask.xy)) * input.mask.zw);
@@ -224,6 +263,10 @@ SubShader {
 
 			#if (UNDERLAY_ON | UNDERLAY_INNER)
 			c *= input.texcoord1.z;
+			#endif
+
+			#if (UNDERLAY2_ON | UNDERLAY2_INNER)
+			c *= input.texcoord2.z;
 			#endif
 
 			#if UNITY_UI_ALPHACLIP
@@ -236,5 +279,5 @@ SubShader {
 	}
 }
 
-CustomEditor "TMPro.EditorUtilities.TMP_SDFShaderGUI"
+CustomEditor "TMPro.EditorUtilities.TMP_SDF_Custom_ShaderGUI"
 }
